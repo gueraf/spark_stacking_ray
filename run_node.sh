@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-# Adapted from https://github.com/eugr/spark-vllm-docker/blob/main/run-cluster-node.sh
+# Runtime configuration script
+# Called by Docker ENTRYPOINT
 
 export_persist() {
     local var_name="$1"
@@ -69,9 +70,6 @@ export_persist OMPI_MCA_btl_tcp_if_include "$ETH_IF_NAME"
 export_persist GLOO_SOCKET_IFNAME "$ETH_IF_NAME"
 export_persist TP_SOCKET_IFNAME "$ETH_IF_NAME"
 export_persist RAY_memory_monitor_refresh_ms "0"
-
-# Add CUDA to PATH just in case
-export PATH=/usr/local/cuda/bin:$PATH
 
 echo ">>> Starting Ray..."
 

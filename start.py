@@ -6,8 +6,9 @@ import time
 
 INFO_FILE = "ray_info.txt"
 RUN_SCRIPT = "run_node.sh"
-REMOTE_SCRIPT_PATH = "/tmp/run_node.sh"
-DOCKER_IMAGE = "rayproject/ray:latest-gpu"
+DOCKERFILE = "Dockerfile"
+REMOTE_BUILD_DIR = "/tmp/ray_build"
+DOCKER_IMAGE = "ray_nccl_node" # Local built image
 
 def run_ssh_cmd(ip, cmd, check=True, stream_output=False):
     ssh_cmd = ["ssh", "-T", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", ip, cmd]
@@ -107,62 +108,79 @@ def discover_nodes():
                  m.append(x)
              return m
 
+import threading
+
+def provision_node_thread(node, i, nodes):
+    role = "head" if i == 0 else "node"
+    head_ip = nodes[0]
+    print(f"\n[Thread {node}] Setting up {role.upper()}...")
+    
+    # 1. Get Details
+    eth_if, ib_if = get_node_details(node)
+    print(f"    [{node}] Interface: {eth_if}, IB: {ib_if}")
+    
+    # 2. Build Docker Image (Ephemeral)
+    print(f"    [{node}] Preparing build context...")
+    run_ssh_cmd(node, f"mkdir -p {REMOTE_BUILD_DIR}")
+    scp_file(node, DOCKERFILE, f"{REMOTE_BUILD_DIR}/Dockerfile")
+    scp_file(node, RUN_SCRIPT, f"{REMOTE_BUILD_DIR}/run_node.sh")
+    
+    print(f"    [{node}] Building Docker image (this may take a while)...")
+    res = run_ssh_cmd(node, f"cd {REMOTE_BUILD_DIR} && docker build -t {DOCKER_IMAGE} .", stream_output=True)
+    if res.returncode != 0:
+        print(f"    [{node}] Build FAILED.")
+        # We can't exit main thread easily, just return?
+        return
+    
+    # 3. Stop existing containers
+    print(f"    [{node}] Stopping old containers...")
+    run_ssh_cmd(node, "docker rm -f ray_cluster_node 2>/dev/null || true")
+    
+    # 4. Launch Docker
+    docker_cmd = [
+        "docker", "run", "-d",
+        "--name", "ray_cluster_node",
+        "--net=host",
+        "--ipc=host",
+        "--privileged",
+        "--gpus=all",
+        "--shm-size=10.24gb",
+        "--restart=always",
+        DOCKER_IMAGE,
+        "--role", role,
+        "--host-ip", node,
+        "--eth-if", eth_if,
+        "--ib-if", ib_if
+    ]
+    
+    if role == "node":
+        docker_cmd.extend(["--head-ip", head_ip])
+        
+    cmd_str = " ".join(docker_cmd)
+    print(f"    [{node}] Launching container...")
+    print(f"    [{node}] [DEBUG] Running: {cmd_str}")
+    
+    res = run_ssh_cmd(node, cmd_str, stream_output=True)
+    
+    if res.returncode != 0:
+        print(f"    [{node}] Launch FAILED with exit code {res.returncode}")
+    else:
+        print(f"    [{node}] Success.")
+
 def start_cluster():
     nodes = discover_nodes()
     head_ip = nodes[0]
     
-    print("\n>>> Preparing Cluster...")
+    print("\n>>> Preparing Cluster (Parallel)...")
     
-    for i, ip in enumerate(nodes):
-        role = "head" if i == 0 else "node"
-        print(f"\n--- Setting up {role.upper()} on {ip} ---")
-        
-        # 1. Get Details
-        eth_if, ib_if = get_node_details(ip)
-        print(f"    Interface: {eth_if}, IB: {ib_if}")
-        
-        # 2. Copy Run Script
-        print("    Copying setup script...")
-        scp_file(ip, RUN_SCRIPT, REMOTE_SCRIPT_PATH)
-        run_ssh_cmd(ip, f"chmod +x {REMOTE_SCRIPT_PATH}")
-        
-        # 3. Stop existing containers
-        print("    Stopping old containers...")
-        run_ssh_cmd(ip, "docker rm -f ray_cluster_node 2>/dev/null || true")
-        
-        # 4. Launch Docker
-        docker_cmd = [
-            "docker", "run", "-d",
-            "--name", "ray_cluster_node",
-            "--net=host",
-            "--ipc=host",
-            "--privileged",
-            "--shm-size=10.24gb",
-            "--restart=always",
-            "-v", f"{REMOTE_SCRIPT_PATH}:/run_node.sh",
-            DOCKER_IMAGE,
-            "/run_node.sh",
-            "--role", role,
-            "--host-ip", ip,
-            "--eth-if", eth_if,
-            "--ib-if", ib_if
-        ]
-        
-        if role == "node":
-            docker_cmd.extend(["--head-ip", head_ip])
-            
-        cmd_str = " ".join(docker_cmd)
-        print(f"    Launching container...")
-        print(f"    [DEBUG] Running on {ip}: {cmd_str}")
-        
-        # Stream output to see image pull progress
-        res = run_ssh_cmd(ip, cmd_str, stream_output=True)
-        
-        if res.returncode != 0:
-            print(f"    FAILED with exit code {res.returncode}")
-            sys.exit(1)
-        else:
-            print(f"    Success.")
+    threads = []
+    for i, node in enumerate(nodes):
+        t = threading.Thread(target=provision_node_thread, args=(node, i, nodes))
+        t.start()
+        threads.append(t)
+    
+    for t in threads:
+        t.join()
 
     # Save info
     with open(INFO_FILE, "w") as f:
