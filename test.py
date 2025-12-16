@@ -29,16 +29,34 @@ def run_worker(rank, world_size, master_addr, master_port):
     os.environ["RANK"] = str(rank)
     
     # Print inherited environment variables for verification
-    print(f"\n[Rank {rank} @ {socket.gethostname()}] Network Environment:")
+    print(f"\n[Rank {rank} @ {socket.gethostname()}] PyTorch Version: {torch.__version__}, CUDA: {torch.version.cuda}")
+    print(f"[Rank {rank} @ {socket.gethostname()}] Network Environment:")
     keys = [
         "NCCL_SOCKET_IFNAME", 
         "UCX_NET_DEVICES", 
         "NCCL_IB_HCA", 
         "NCCL_IB_DISABLE",
-        "NCCL_DEBUG"
+        "NCCL_DEBUG",
+        "LD_LIBRARY_PATH"
     ]
     for key in keys:
         print(f"  {key}: {os.environ.get(key, 'Not Set')}")
+
+    # Check loaded NCCL library
+    try:
+        import ctypes.util
+        lib = ctypes.util.find_library("nccl")
+        print(f"  [Check] found libnccl via ctypes: {lib}")
+        
+        # More robust check: inspect /proc/self/maps for loaded .so
+        print("  [Check] Loaded libnccl.so paths in process:")
+        with open("/proc/self/maps") as f:
+            for line in f:
+                if "libnccl.so" in line:
+                    path = line.split()[-1]
+                    print(f"    - {path}")
+    except Exception as e:
+        print(f"  [Check] Failed to check loaded libraries: {e}")
 
     # Initialize Process Group
     try:
@@ -161,8 +179,10 @@ def submit_job():
     create_job_script()
 
     # Pass NCCL_DEBUG=INFO to see InfiniBand usage in logs
+    # Explicitly install requested torch version from nightly/cu129
     env_vars = {
-        "pip": ["torch"],
+        "pip": ["torch==2.9.1"],
+        "PIP_EXTRA_INDEX_URL": "https://download.pytorch.org/whl/nightly/cu129",
         "NCCL_DEBUG": "INFO"
     }
     
