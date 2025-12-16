@@ -182,10 +182,6 @@ def start_cluster():
     for t in threads:
         t.join()
 
-    # Save info
-    with open(INFO_FILE, "w") as f:
-        f.write(head_ip)
-        
     print("\nCluster Launched!")
     print(f"Head Node: {head_ip}")
     print(f"Ray Dashboard: http://{head_ip}:8265")
