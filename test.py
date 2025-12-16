@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-import os
-import sys
-import subprocess
-
-INFO_FILE = "ray_info.txt"
-
-# This script will be written to the current directory and submitted to the cluster.
-JOB_SCRIPT_NAME = "run_torch_nccl.py"
-JOB_SCRIPT_CONTENT = r"""
 import ray
 import torch
 import torch.distributed as dist
@@ -110,6 +101,9 @@ def run_worker(rank, world_size, master_addr, master_port):
 
 def main():
     print("Connecting to Ray...")
+    # Expects to run ON the cluster via 'ray job submit' or local 'uv run' connected to Ray
+    # If running via 'uv run test.py' on head node, address='auto' works if RAY_ADDRESS env var is set 
+    # or if we are local to the head.
     ray.init(address="auto")
 
     print("Discovering GPU nodes...")
@@ -160,49 +154,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-"""
-
-def create_job_script():
-    with open(JOB_SCRIPT_NAME, "w") as f:
-        f.write(JOB_SCRIPT_CONTENT)
-
-def submit_job():
-    if not os.path.exists(INFO_FILE):
-        print("Cluster info not found. Run start.py first.")
-        sys.exit(1)
-
-    with open(INFO_FILE, "r") as f:
-        head_ip = f.read().strip()
-
-    print(f"Submitting Torch NCCL test to Ray Cluster at {head_ip}...")
-    
-    create_job_script()
-
-    # Pass NCCL_DEBUG=INFO to see InfiniBand usage in logs
-    # Explicitly install requested torch version from nightly/cu129
-    env_vars = {
-        "pip": ["torch==2.9.1"],
-        "PIP_EXTRA_INDEX_URL": "https://download.pytorch.org/whl/nightly/cu129",
-        "NCCL_DEBUG": "INFO"
-    }
-    
-    cmd = [
-        "docker", "run", "--rm",
-        "-v", f"{os.getcwd()}:/work",
-        "-w", "/work",
-        "--net=host", 
-        "rayproject/ray:latest",
-        "ray", "job", "submit",
-        "--address", f"http://{head_ip}:8265",
-        "--working-dir", ".",
-        "--runtime-env-json", str(env_vars).replace("'", '"'),
-        "--", "python", JOB_SCRIPT_NAME
-    ]
-
-    try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Job submission failed: {e}")
-
-if __name__ == "__main__":
-    submit_job()

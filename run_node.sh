@@ -71,6 +71,9 @@ export_persist GLOO_SOCKET_IFNAME "$ETH_IF_NAME"
 export_persist TP_SOCKET_IFNAME "$ETH_IF_NAME"
 export_persist RAY_memory_monitor_refresh_ms "0"
 
+# Enable UV for Ray Runtime Env
+export_persist RAY_RUNTIME_ENV_HOOK "ray._private.runtime_env.uv_runtime_env_hook.hook"
+
 echo ">>> Starting Ray..."
 
 if [ "${NODE_TYPE}" == "head" ]; then
