@@ -4,14 +4,8 @@ version = "0.1.0"
 description = "NCCL Performance Test on Ray"
 requires-python = ">=3.10"
 dependencies = [
-    "ray[default]",
-    "torch",
+  "torch", 
 ]
 
 [[tool.uv.index]]
 url = "https://download.pytorch.org/whl/nightly/cu129"
-# We keep this as an extra index (not default=true, so PyPI is still used for Ray)
-# But we need to ensure torch comes from here. 
-# UV priority: if version matches, it checks all?
-# Let's try to pin to the index explicitly if possible, or just trust resolution.
-
