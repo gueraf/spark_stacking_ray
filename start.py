@@ -186,7 +186,6 @@ def start_cluster():
     print(f"Head Node: {head_ip}")
     print(f"Ray Dashboard: http://{head_ip}:8265")
     print("To check logs: ssh <ip> 'docker logs -f ray_cluster_node'")
-    print("Use 'python test.py' to run workloads.")
 
 if __name__ == "__main__":
     start_cluster()
