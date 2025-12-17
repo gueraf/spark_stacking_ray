@@ -5,6 +5,7 @@ description = "NCCL Performance Test on Ray"
 requires-python = ">=3.10"
 dependencies = [
   "torch", 
+  "triton",
 ]
 
 [[tool.uv.index]]
