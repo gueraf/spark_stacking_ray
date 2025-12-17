@@ -3,7 +3,7 @@ set -e
 
 ADDRESS="http://10.10.20.1:8265"
 
-echo "Submitting test_04_nvshmem.py to Ray Cluster (using uv)..."
+echo "Submitting test_04_all_gather_perf.py to Ray Cluster..."
 
 # Ensure we are in the project root (where pyproject.toml is)
 if [ ! -f "pyproject.toml" ]; then
@@ -20,6 +20,6 @@ docker run --rm \
     rayproject/ray:latest \
     ray job submit \
     --address "$ADDRESS" \
-    --runtime-env-json '{"working_dir": ".", "py_executable": "uv run python", "env_vars": {"UV_PROJECT_ENVIRONMENT": "/home/ray/anaconda3"}}' \
+    --runtime-env-json '{"working_dir": ".", "exclusion": [".git", "nccl-tests"]}' \
     -- \
-    uv run python tests/test_04_nvshmem.py
+    python tests/test_04_all_gather_perf.py
