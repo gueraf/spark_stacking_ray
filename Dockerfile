@@ -1,6 +1,6 @@
 # Dockerfile for Ray Cluster Node
 # Minimal setup as requested: Build NCCL, set paths, rely on base image
-FROM rayproject/ray:nightly-py312-cu129-aarch64
+FROM rayproject/ray:2.53.0-py312-cu129-aarch64
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
