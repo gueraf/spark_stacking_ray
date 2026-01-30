@@ -10,10 +10,18 @@ spec:
       template:
         spec:
           hostNetwork: true
+          dnsPolicy: ClusterFirstWithHostNet
+          tolerations:
+            - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
           containers:
             - name: pytorch
               image: ray_nccl_node:latest
               imagePullPolicy: Never
+              env:
+                - name: NCCL_DEBUG
+                  value: "INFO"
               resources:
                 limits:
                   nvidia.com/gpu: 1
@@ -68,12 +76,11 @@ spec:
                       sys.exit(1)
                   EOF
 
-                  # Auto-detect interface for NCCL
-                  # We use python to get the IP to avoid dependency on 'ip' command
-                  export NCCL_SOCKET_IFNAME=$(python3 -c "import socket; print(socket.gethostbyname(socket.gethostname()))" 2>/dev/null)
-                  # If that fails (e.g. returns 127.0.0.1), try a route to internet
-                  if [[ "$NCCL_SOCKET_IFNAME" == "127.0.0.1" || -z "$NCCL_SOCKET_IFNAME" ]]; then
-                      export NCCL_SOCKET_IFNAME=$(python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()" 2>/dev/null)
+                  # Auto-detect interface name for NCCL (must be interface name, not IP!)
+                  # List network interfaces and pick first non-loopback one
+                  export NCCL_SOCKET_IFNAME=$(ls /sys/class/net | grep -v lo | head -n1)
+                  if [ -z "$NCCL_SOCKET_IFNAME" ]; then
+                    export NCCL_SOCKET_IFNAME=eth0
                   fi
                   echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
 
@@ -81,19 +88,27 @@ spec:
                   echo ">>> Checking GPU visibility:"
                   nvidia-smi
                   
-                  # Run with UV, forcing CUDA torch
-                  echo "Running test with uv (CUDA)..."
-                  uv run --with "torch" --extra-index-url https://download.pytorch.org/whl/cu124 /tmp/test.py
+                  # Run with UV, forcing CUDA torch (nightly for Blackwell sm_121 support)
+                  echo "Running test with uv (CUDA nightly for GB10/Blackwell)..."
+                  uv run --with "torch" --extra-index-url https://download.pytorch.org/whl/nightly/cu126 /tmp/test.py
     Worker:
       replicas: 1
       restartPolicy: OnFailure
       template:
         spec:
           hostNetwork: true
+          dnsPolicy: ClusterFirstWithHostNet
+          tolerations:
+            - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
           containers:
             - name: pytorch
               image: ray_nccl_node:latest
               imagePullPolicy: Never
+              env:
+                - name: NCCL_DEBUG
+                  value: "INFO"
               resources:
                 limits:
                   nvidia.com/gpu: 1
@@ -142,14 +157,17 @@ spec:
                   else:
                       print(f'[{host}] VALIDATION FAILURE: {result} != {expected}')
                       sys.exit(1)
-                                    EOF
+                  EOF
+
+                  # Auto-detect interface name for NCCL (must be interface name, not IP!)
+                  export NCCL_SOCKET_IFNAME=$(ls /sys/class/net | grep -v lo | head -n1)
+                  if [ -z "$NCCL_SOCKET_IFNAME" ]; then
+                    export NCCL_SOCKET_IFNAME=eth0
+                  fi
+                  echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
                   
-                                    export NCCL_SOCKET_IFNAME=$(python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()" 2>/dev/null)
-                                                                        echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
-                                                                        
-                                                                        echo ">>> Checking GPU visibility:"
-                                                                        nvidia-smi
-                                                      
-                                                                        echo "Running test with uv (CUDA)..."
-                                                                        uv run --with "torch" --extra-index-url https://download.pytorch.org/whl/cu124 /tmp/test.py
-                                                                        
+                  echo ">>> Checking GPU visibility:"
+                  nvidia-smi
+                  
+                  echo "Running test with uv (CUDA nightly for GB10/Blackwell)..."
+                  uv run --with "torch" --extra-index-url https://download.pytorch.org/whl/nightly/cu126 /tmp/test.py
