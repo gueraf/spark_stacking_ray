@@ -191,7 +191,8 @@ def configure_nvidia_k3s(ip, sudo_pass):
 def setup_nvidia_device_plugin(head_ip, sudo_pass):
     print("\n>>> Deploying NVIDIA Device Plugin...")
     # This daemonset advertises the GPU resources to Kubernetes
-    plugin_url = "https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml"
+    # Using specific commit hash provided by user
+    plugin_url = "https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/4f1de00eb6eb148dcd90cf85e9ce0fc830b43651/deployments/static/nvidia-device-plugin.yml"
     cmd = f"echo '{sudo_pass}' | sudo -S kubectl apply -f {plugin_url}"
     run_ssh_cmd(head_ip, cmd, stream_output=True)
 

@@ -1,0 +1,146 @@
+apiVersion: "kubeflow.org/v1"
+kind: PyTorchJob
+metadata:
+  name: pytorch-gpu-test
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          hostNetwork: true
+          containers:
+            - name: pytorch
+              image: ray_nccl_node:latest
+              imagePullPolicy: Never
+              resources:
+                limits:
+                  nvidia.com/gpu: 1
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -e
+                  set -x
+                  
+                  # Create the python script
+                  cat << 'EOF' > /tmp/test.py
+                  import torch
+                  import torch.distributed as dist
+                  import os
+                  import socket
+                  import sys
+
+                  rank = int(os.environ.get('RANK', 0))
+                  ws = int(os.environ.get('WORLD_SIZE', 1))
+                  host = socket.gethostname()
+
+                  print(f'[{host}] Rank {rank}/{ws} Initializing...')
+
+                  if not torch.cuda.is_available():
+                      print(f'[{host}] ERROR: CUDA not available')
+                      sys.exit(1)
+                      
+                  device = torch.device('cuda:0')
+                  print(f'[{host}] Using GPU: {torch.cuda.get_device_name(device)}')
+
+                  # Initialize Process Group
+                  # We use nccl backend as requested
+                  dist.init_process_group(backend='nccl')
+
+                  val = 1.0
+                  tensor = torch.tensor([val]).to(device)
+                  print(f'[{host}] Local Tensor: {tensor.item()}')
+
+                  # All Reduce (Sum)
+                  dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+                  result = tensor.item()
+
+                  expected = val * ws
+                  print(f'[{host}] Result: {result}')
+
+                  dist.destroy_process_group()
+
+                  if abs(result - expected) < 1e-6:
+                      print(f'[{host}] VALIDATION SUCCESS: {result} == {expected}')
+                  else:
+                      print(f'[{host}] VALIDATION FAILURE: {result} != {expected}')
+                      sys.exit(1)
+                  EOF
+
+                  # Auto-detect interface for NCCL
+                  export NCCL_SOCKET_IFNAME=$(ip route get 1 | awk '{print $5;exit}')
+                  echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
+
+                  # Run with UV
+                  # We assume the image has torch installed in the system python or default path.
+                  # 'uv run' might create an isolated env, so we explicitly tell it to use the system python
+                  # to avoid re-installing torch.
+                  # If 'python' is in path, uv usually picks it up.
+                  echo "Running test with uv..."
+                  uv run --python system /tmp/test.py
+    Worker:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          hostNetwork: true
+          containers:
+            - name: pytorch
+              image: ray_nccl_node:latest
+              imagePullPolicy: Never
+              resources:
+                limits:
+                  nvidia.com/gpu: 1
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -e
+                  set -x
+                  
+                  cat << 'EOF' > /tmp/test.py
+                  import torch
+                  import torch.distributed as dist
+                  import os
+                  import socket
+                  import sys
+
+                  rank = int(os.environ.get('RANK', 0))
+                  ws = int(os.environ.get('WORLD_SIZE', 1))
+                  host = socket.gethostname()
+
+                  print(f'[{host}] Rank {rank}/{ws} Initializing...')
+
+                  if not torch.cuda.is_available():
+                      print(f'[{host}] ERROR: CUDA not available')
+                      sys.exit(1)
+                      
+                  device = torch.device('cuda:0')
+                  print(f'[{host}] Using GPU: {torch.cuda.get_device_name(device)}')
+
+                  dist.init_process_group(backend='nccl')
+
+                  val = 1.0
+                  tensor = torch.tensor([val]).to(device)
+                  print(f'[{host}] Local Tensor: {tensor.item()}')
+
+                  dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+                  result = tensor.item()
+
+                  expected = val * ws
+                  print(f'[{host}] Result: {result}')
+
+                  dist.destroy_process_group()
+
+                  if abs(result - expected) < 1e-6:
+                      print(f'[{host}] VALIDATION SUCCESS: {result} == {expected}')
+                  else:
+                      print(f'[{host}] VALIDATION FAILURE: {result} != {expected}')
+                      sys.exit(1)
+                  EOF
+
+                  export NCCL_SOCKET_IFNAME=$(ip route get 1 | awk '{print $5;exit}')
+                  echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
+                  
+                  echo "Running test with uv..."
+                  uv run --python system /tmp/test.py
