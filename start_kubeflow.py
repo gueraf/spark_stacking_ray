@@ -112,6 +112,14 @@ def install_k3s_head(ip, sudo_pass):
 
 def install_k3s_worker(ip, head_ip, token, sudo_pass):
     print(f"[{ip}] Installing K3s Agent (Worker)...")
+    
+    # 0. Clean up any bad config from previous runs to ensure clean install
+    cleanup_cmd = f"echo '{sudo_pass}' | sudo -S rm -f /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl"
+    try:
+        run_ssh_cmd(ip, cleanup_cmd, stream_output=False)
+    except:
+        pass # Ignore if file doesn't exist
+
     # Pass env vars to the shell being run by sudo
     install_cmd = (
         "curl -sfL https://get.k3s.io -o k3s_install.sh && "
@@ -166,7 +174,8 @@ def configure_nvidia_k3s(ip, sudo_pass):
     
     # 1. Configure Docker Daemon using nvidia-ctk
     # This modifies /etc/docker/daemon.json
-    cmd_config = f"echo '{sudo_pass}' | sudo -S nvidia-ctk runtime configure --runtime=docker"
+    # We add --set-as-default so K3s/Kubernetes uses it for all pods (including Device Plugin)
+    cmd_config = f"echo '{sudo_pass}' | sudo -S nvidia-ctk runtime configure --runtime=docker --set-as-default"
     run_ssh_cmd(ip, cmd_config, stream_output=True)
 
     # 2. Restart Docker to apply changes
