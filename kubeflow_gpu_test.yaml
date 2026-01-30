@@ -77,9 +77,13 @@ spec:
                   fi
                   echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
 
-                  # Run with UV
-                  echo "Running test with uv..."
-                  uv run --with torch /tmp/test.py
+                  # Debug: Check GPU visibility
+                  echo ">>> Checking GPU visibility:"
+                  nvidia-smi
+                  
+                  # Run with UV, forcing CUDA torch
+                  echo "Running test with uv (CUDA)..."
+                  uv run --with "torch" --extra-index-url https://download.pytorch.org/whl/cu124 /tmp/test.py
     Worker:
       replicas: 1
       restartPolicy: OnFailure
@@ -141,10 +145,11 @@ spec:
                                     EOF
                   
                                     export NCCL_SOCKET_IFNAME=$(python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()" 2>/dev/null)
-                                    echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
-                                    
-                                    echo "Running test with uv..."
-                                    uv run --with torch /tmp/test.py
-                  
-
-                  
+                                                                        echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
+                                                                        
+                                                                        echo ">>> Checking GPU visibility:"
+                                                                        nvidia-smi
+                                                      
+                                                                        echo "Running test with uv (CUDA)..."
+                                                                        uv run --with "torch" --extra-index-url https://download.pytorch.org/whl/cu124 /tmp/test.py
+                                                                        
