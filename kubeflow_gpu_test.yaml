@@ -69,16 +69,17 @@ spec:
                   EOF
 
                   # Auto-detect interface for NCCL
-                  export NCCL_SOCKET_IFNAME=$(ip route get 1 | awk '{print $5;exit}')
+                  # We use python to get the IP to avoid dependency on 'ip' command
+                  export NCCL_SOCKET_IFNAME=$(python3 -c "import socket; print(socket.gethostbyname(socket.gethostname()))" 2>/dev/null)
+                  # If that fails (e.g. returns 127.0.0.1), try a route to internet
+                  if [[ "$NCCL_SOCKET_IFNAME" == "127.0.0.1" || -z "$NCCL_SOCKET_IFNAME" ]]; then
+                      export NCCL_SOCKET_IFNAME=$(python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()" 2>/dev/null)
+                  fi
                   echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
 
                   # Run with UV
-                  # We assume the image has torch installed in the system python or default path.
-                  # 'uv run' might create an isolated env, so we explicitly tell it to use the system python
-                  # to avoid re-installing torch.
-                  # If 'python' is in path, uv usually picks it up.
                   echo "Running test with uv..."
-                  uv run --python system /tmp/test.py
+                  uv run --with torch /tmp/test.py
     Worker:
       replicas: 1
       restartPolicy: OnFailure
@@ -137,10 +138,13 @@ spec:
                   else:
                       print(f'[{host}] VALIDATION FAILURE: {result} != {expected}')
                       sys.exit(1)
-                  EOF
-
-                  export NCCL_SOCKET_IFNAME=$(ip route get 1 | awk '{print $5;exit}')
-                  echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
+                                    EOF
                   
-                  echo "Running test with uv..."
-                  uv run --python system /tmp/test.py
+                                    export NCCL_SOCKET_IFNAME=$(python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()" 2>/dev/null)
+                                    echo "Detected NCCL Interface: $NCCL_SOCKET_IFNAME"
+                                    
+                                    echo "Running test with uv..."
+                                    uv run --with torch /tmp/test.py
+                  
+
+                  

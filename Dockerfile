@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 1. Install ONLY build tools needed for NCCL
 # Also install 'uv' for fast dependency management
 RUN apt-get update -qq && \
-    apt-get install -y -qq build-essential git curl && \
+    apt-get install -y -qq build-essential git curl iproute2 && \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /home/ray/.local/bin/uv /usr/local/bin/uv && \
     rm -rf /var/lib/apt/lists/*
